@@ -11,11 +11,16 @@ import tkinter
 import cv2 
 import os
 import time 
+from matplotlib import pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn import svm
+
 
 protoFile = "model\\pose_deploy.prototxt"
 weightsFile = "model\\pose_iter_102000.caffemodel"
 
-nPoints = 22
+nPoints = 21
 net = cv2.dnn.readNetFromCaffe(protoFile, weightsFile) 
 net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
 net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
@@ -25,42 +30,11 @@ root = tkinter.Tk()
 root.geometry("500x500")
 f = Frame()
 f.pack(side=BOTTOM)
-
-
-def captureImage():
-    i=1
-    vid = cv2.VideoCapture(0)
-    while i<=5:
-        ret, frame = vid.read() 
+totalImages=5
+quitflag = False
         
-        folderName = os.path.join(folderpath,E1.get())
-        if not os.path.exists(folderName):
-            os.mkdir(folderName)
-        filename = os.path.join(folderName,str(i)+".jpg")
-        cv2.imwrite(filename, frame)  
-        var.set(str(i)+".jpg saved")
-        i+=1
-        root.update()
-        time.sleep(1)
-    vid.release() 
-
-E1 = Entry(f)
-E1.delete(0,END)
-E1.insert(0,"1") 
-E1.pack(side = LEFT)
-
-B = tkinter.Button(f, text ="Capture", command = captureImage)
-B.pack(side=LEFT)
-
-var = StringVar()
-var.set('Ready')
-L1 = Label(f,textvariable = var)
-L1.pack(side=LEFT)
-canvas = Canvas(root, width = 300, height = 300, bg="black")      
-canvas.pack(side=TOP) 
-
-def getMarkedImage(filename):
-    frame = cv2.imread(filename)
+def getMarkedImage(frame):
+    
     scale_percent = 50 
     width = int(frame.shape[1] * scale_percent / 100)
     height = int(frame.shape[0] * scale_percent / 100) 
@@ -97,9 +71,55 @@ def getMarkedImage(filename):
             points.append(None)
     return frameCopy,points
 
+
+def captureImage():
+    i=1
+    vid = cv2.VideoCapture(0)
+    while i<=totalImages:
+        ret, frame = vid.read() 
+        
+        f,p = getMarkedImage(frame.copy())
+        
+#         Display Pic
+        frameCopy = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = ImageTk.PhotoImage(image = PIL.Image.fromarray(frameCopy))  
+        canvas.create_image(100,100, image=img) 
+    
+        
+        folderName = os.path.join(folderpath,E1.get())
+        if not os.path.exists(folderName):
+            os.mkdir(folderName)
+        filename = os.path.join(folderName,str(i)+".jpg")
+        if p.count(None)==0:
+            cv2.imwrite(filename, frame)  
+            var.set(str(i)+".jpg saved")
+            i+=1
+        else:
+            var.set("None "+str(p.count(None)))
+        root.update()
+        time.sleep(1)
+    vid.release() 
+
+E1 = Entry(f)
+E1.delete(0,END)
+E1.insert(0,"1") 
+E1.pack(side = LEFT)
+
+B = tkinter.Button(f, text ="Capture", command = captureImage)
+B.pack(side=LEFT)
+
+var = StringVar()
+var.set('Ready')
+L1 = Label(f,textvariable = var)
+L1.pack(side=LEFT)
+canvas = Canvas(root, width = 300, height = 300, bg="black")      
+canvas.pack(side=TOP) 
+
+
+
 def checkImage():
     image_count=1
-    while image_count<=5:   
+    while image_count<=totalImages:   
         folderName = os.path.join(folderpath,E1.get())
         if not os.path.exists(folderName):
             return
@@ -109,21 +129,96 @@ def checkImage():
         # img = ImageTk.PhotoImage(img.resize((w//2,h//2)) )  
         
         #Detect points 
-        frame,p = getMarkedImage(filename)
-        res = [i for i in range(len(p)) if p[i] != None]
-        print(filename,p,res)
+        if not os.path.exists(filename):
+            print(filename,"Does not exist")
+            return None,None
+        frame = cv2.imread(filename)
+    
+        frame,p = getMarkedImage(frame) 
         frameCopy = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = ImageTk.PhotoImage(image = PIL.Image.fromarray(frameCopy))  
-        canvas.create_image(100,100, image=img)   
+        canvas.create_image(100,100, image=img) 
+    
+        
+#         Display Pic
+        frameCopy = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = ImageTk.PhotoImage(image = PIL.Image.fromarray(frameCopy))  
+        canvas.create_image(100,100, image=img) 
+    
         var.set(str(image_count)+".jpg Displayed") 
         image_count+=1
         root.update() 
+
+#Feature extraction
+def extractFeatures():
+    signs=['left','right']
+    features=None
+    output=[]
+    for s in signs:
+        folderName = os.path.join(folderpath,s)
+        for pic in os.listdir(folderName):
+            print(folderName,pic)
+            f,p = getMarkedImage(cv2.imread(os.path.join(folderName,pic)))
+            if features is None:
+                features =  np.expand_dims(np.array(p),axis=0)
+            else:
+                features =  np.concatenate((features,np.expand_dims(np.array(p),axis=0)),axis=0)
+            output.append(s)
+    np.save("data_features.npy",features)
+    np.save("data_output.npy",output)
+    
+    
+def predict():
+    f= np.load("data_features.npy")
+    o= np.load("data_output.npy") 
+    f = f.reshape((len(o),-1))  
+    
+    clf = svm.SVC()
+    clf.fit(f, o)
+    vid = cv2.VideoCapture(0)
+    while not quitflag: 
+        print(quitflag)
+        ret, frame = vid.read() 
+        
+        f,p = getMarkedImage(frame.copy())
+        
+#         Display Pic
+        frameCopy = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
+        img = ImageTk.PhotoImage(image = PIL.Image.fromarray(frameCopy))  
+        canvas.create_image(200,200, image=img) 
+     
+        if p.count(None)==0: 
+            features = np.array(p)
+            features = features.reshape((1,-1))
+            var.set( "Prediction = "+clf.predict(features)[0]) 
+        else:
+            var.set("None "+str(p.count(None)))
+            
+        root.update()
+        time.sleep(1)
+    vid.release() 
+    
     
 
 B = tkinter.Button(f, text ="Check", command = checkImage)
 B.pack()
 
+C = tkinter.Button(f, text ="Train", command = extractFeatures)
+C.pack()
 
+
+D = tkinter.Button(f, text ="Predict", command = predict)
+D.pack()
+
+
+
+def quit(root):
+    quitflag=True
+    print(quitflag)
+#     ret, frame = vid.read()   
+#     vid.release()
+#     root.destroy()
+tkinter.Button(root, text="Quit", command=lambda root=root:quit(root)).pack()
 
 
 root.mainloop()
