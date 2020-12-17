@@ -1,7 +1,7 @@
 import cv2  
 
-protoFile = "pose_deploy.prototxt"
-weightsFile = "pose_iter_102000.caffemodel"
+protoFile = "model\\pose_deploy.prototxt"
+weightsFile = "model\\pose_iter_102000.caffemodel"
 nPoints = 22
 
 net = cv2.dnn.readNetFromCaffe(protoFile, weightsFile) 
