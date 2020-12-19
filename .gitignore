@@ -2,3 +2,4 @@
 model
 images
 *.npy
+model_svm

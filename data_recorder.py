@@ -15,7 +15,9 @@ from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn import svm
-
+from tensorflow.keras import layers,models
+import tensorflow as tf
+import pickle
 
 protoFile = "model\\pose_deploy.prototxt"
 weightsFile = "model\\pose_iter_102000.caffemodel"
@@ -28,8 +30,6 @@ net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
 folderpath = "images"
 root = tkinter.Tk()
 root.geometry("500x500")
-f = Frame()
-f.pack(side=BOTTOM)
 totalImages=5
 quitflag = False
         
@@ -83,7 +83,7 @@ def captureImage():
 #         Display Pic
         frameCopy = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = ImageTk.PhotoImage(image = PIL.Image.fromarray(frameCopy))  
-        canvas.create_image(100,100, image=img) 
+        canvas.create_image(130,100, image=img) 
     
         
         folderName = os.path.join(folderpath,E1.get())
@@ -100,6 +100,8 @@ def captureImage():
         time.sleep(1)
     vid.release() 
 
+f = Frame()
+
 E1 = Entry(f)
 E1.delete(0,END)
 E1.insert(0,"1") 
@@ -112,7 +114,7 @@ var = StringVar()
 var.set('Ready')
 L1 = Label(f,textvariable = var)
 L1.pack(side=LEFT)
-canvas = Canvas(root, width = 300, height = 300, bg="black")      
+canvas = Canvas(root, width = 400, height = 300, bg="black")      
 canvas.pack(side=TOP) 
 
 
@@ -151,7 +153,7 @@ def checkImage():
 
 #Feature extraction
 def extractFeatures():
-    signs=['left','right']
+    signs=['left','right','middle']
     features=None
     output=[]
     for s in signs:
@@ -169,56 +171,50 @@ def extractFeatures():
     
     
 def predict():
-    f= np.load("data_features.npy")
+    f_multi_dimen= np.load("data_features.npy") #n*21*2 dimen
     o= np.load("data_output.npy") 
-    f = f.reshape((len(o),-1))  
+    f = f_multi_dimen.reshape((len(o),-1))  
     
+    # Train SVM
     clf = svm.SVC()
     clf.fit(f, o)
+    pickle.dump(clf, open("model_svm", 'wb'))
+    # Train NN
+     
+ 
     vid = cv2.VideoCapture(0)
-    while not quitflag: 
-        print(quitflag)
-        ret, frame = vid.read() 
-        
-        f,p = getMarkedImage(frame.copy())
-        
-#         Display Pic
+    i=0
+    while i<=10:  
+        ret, frame = vid.read()  
+        f,p = getMarkedImage(frame.copy()) 
         frameCopy = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
         img = ImageTk.PhotoImage(image = PIL.Image.fromarray(frameCopy))  
-        canvas.create_image(200,200, image=img) 
+        canvas.create_image(130,100, image=img) 
      
         if p.count(None)==0: 
             features = np.array(p)
             features = features.reshape((1,-1))
             var.set( "Prediction = "+clf.predict(features)[0]) 
-        else:
+            i+=1
+        # else:
             var.set("None "+str(p.count(None)))
             
-        root.update()
-        time.sleep(1)
+        root.update() 
     vid.release() 
     
-    
+bottomFrame = Frame(root)
 
-B = tkinter.Button(f, text ="Check", command = checkImage)
-B.pack()
+B = tkinter.Button(bottomFrame, text ="Check", command = checkImage)
+B.pack(side=LEFT)
 
-C = tkinter.Button(f, text ="Train", command = extractFeatures)
-C.pack()
+C = tkinter.Button(bottomFrame, text ="Train", command = extractFeatures)
+C.pack(side=LEFT)
 
+D = tkinter.Button(bottomFrame, text ="Predict", command = predict)
+D.pack(side=LEFT)
 
-D = tkinter.Button(f, text ="Predict", command = predict)
-D.pack()
-
-
-
-def quit(root):
-    quitflag=True
-    print(quitflag)
-#     ret, frame = vid.read()   
-#     vid.release()
-#     root.destroy()
-tkinter.Button(root, text="Quit", command=lambda root=root:quit(root)).pack()
+bottomFrame.pack(side=BOTTOM)
+f.pack(side=BOTTOM)
 
 
 root.mainloop()
